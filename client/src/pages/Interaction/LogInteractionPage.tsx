@@ -181,9 +181,7 @@ export const LogInteractionPage = () => {
     selectedTool,
     toolResults,
   } = useAppSelector((state) => state.agent);
-  const [aiPrompt, setAiPrompt] = useState(
-    "Today I met with Dr. Smith and discussed product X efficiency. The sentiment was positive and I shared the brochures.",
-  );
+  const [aiPrompt, setAiPrompt] = useState("");
   const requestedMode = searchParams.get("mode");
   const [entryMode, setEntryMode] = useState<EntryMode>(
     requestedMode === "manual" ? "manual" : "ai",

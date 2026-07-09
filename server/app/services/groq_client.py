@@ -79,15 +79,64 @@ class GroqClient:
         return {
             "doctorName": str(payload.get("doctorName") or fallback["doctorName"]),
             "hospital": str(payload.get("hospital") or fallback["hospital"]),
-            "products": list(payload.get("products") or fallback["products"]),
+            "products": self._normalize_list(payload.get("products"), fallback["products"]),
             "summary": str(payload.get("summary") or fallback["summary"]),
-            "sentiment": str(payload.get("sentiment") or fallback["sentiment"]).lower(),
-            "actionItems": list(payload.get("actionItems") or fallback["actionItems"]),
-            "followUpDate": str(payload.get("followUpDate") or fallback["followUpDate"]),
-            "keywords": list(payload.get("keywords") or fallback["keywords"]),
-            "medicalEntities": list(payload.get("medicalEntities") or fallback["medicalEntities"]),
-            "confidenceScore": float(payload.get("confidenceScore") or fallback["confidenceScore"]),
+            "sentiment": self._normalize_sentiment(payload.get("sentiment"), fallback["sentiment"]),
+            "actionItems": self._normalize_list(payload.get("actionItems"), fallback["actionItems"]),
+            "followUpDate": self._normalize_date(payload.get("followUpDate"), fallback["followUpDate"]),
+            "keywords": self._normalize_list(payload.get("keywords"), fallback["keywords"]),
+            "medicalEntities": self._normalize_list(
+                payload.get("medicalEntities"),
+                fallback["medicalEntities"],
+            ),
+            "confidenceScore": self._normalize_confidence(
+                payload.get("confidenceScore"),
+                fallback["confidenceScore"],
+            ),
         }
+
+    @staticmethod
+    def _normalize_list(value: Any, fallback: list[str]) -> list[str]:
+        if isinstance(value, list):
+            items = value
+        elif isinstance(value, str):
+            items = re.split(r"[,;]\s*", value)
+        else:
+            items = []
+
+        cleaned = [str(item).strip() for item in items if str(item).strip()]
+        return cleaned or fallback
+
+    @staticmethod
+    def _normalize_sentiment(value: Any, fallback: str) -> str:
+        normalized = str(value or fallback).lower()
+        if "positive" in normalized:
+            return "positive"
+        if "negative" in normalized:
+            return "negative"
+        return "neutral"
+
+    @staticmethod
+    def _normalize_date(value: Any, fallback: str) -> str:
+        raw = str(value or "").strip()
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+            try:
+                date.fromisoformat(raw)
+                return raw
+            except ValueError:
+                return fallback
+        return fallback
+
+    @staticmethod
+    def _normalize_confidence(value: Any, fallback: float) -> float:
+        try:
+            confidence = float(value)
+        except (TypeError, ValueError):
+            confidence = fallback
+
+        if confidence > 1 and confidence <= 100:
+            confidence = confidence / 100
+        return min(max(confidence, 0), 1)
 
     def _fallback_extract(self, message: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         doctor_name = self._extract_doctor_name(message) or context_get(context, "doctorName", "Unknown doctor")

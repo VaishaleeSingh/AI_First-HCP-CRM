@@ -109,6 +109,59 @@ interface DisplayState {
   activeTool: string;
 }
 
+const toDisplayText = (value: unknown, fallback = ""): string => {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => toDisplayText(item))
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  return fallback;
+};
+
+const toStringList = (value: unknown, fallback: string[] = []) => {
+  if (Array.isArray(value)) {
+    const normalized = value
+      .map((item) => toDisplayText(item).trim())
+      .filter(Boolean);
+
+    return normalized.length ? normalized : fallback;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value
+      .split(/[,;]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    return normalized.length ? normalized : fallback;
+  }
+
+  return fallback;
+};
+
+const isIsoDateInput = (value: string) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(value).getTime());
+
+const toInterestLevel = (value: unknown): InterestLevel | null => {
+  const normalized = toDisplayText(value);
+  return interestLevelOptions.some((option) => option.value === normalized)
+    ? (normalized as InterestLevel)
+    : null;
+};
+
+const toVisitStatus = (value: unknown): VisitStatus | null => {
+  const normalized = toDisplayText(value);
+  return visitStatusOptions.some((option) => option.value === normalized)
+    ? (normalized as VisitStatus)
+    : null;
+};
+
 export const LogInteractionPage = () => {
   const dispatch = useAppDispatch();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -235,15 +288,25 @@ export const LogInteractionPage = () => {
     const patch = result.formPatch ?? {};
     const extraction = result.extraction;
 
-    const patchValue = <T,>(key: string, fallback: T): T =>
-      patch[key] !== undefined && patch[key] !== null
-        ? (patch[key] as T)
-        : fallback;
+    const patchValue = (key: string, fallback: unknown) =>
+      patch[key] !== undefined && patch[key] !== null ? patch[key] : fallback;
 
-    const doctorName = patchValue("doctorName", extraction.doctorName);
-    const hospital = patchValue("hospital", extraction.hospital);
-    const sentiment = patchValue("doctorFeedback", extraction.sentiment);
-    const products = patchValue("productsDiscussed", extraction.products);
+    const doctorName = toDisplayText(
+      patchValue("doctorName", extraction.doctorName),
+      "Unknown doctor",
+    );
+    const hospital = toDisplayText(
+      patchValue("hospital", extraction.hospital),
+      currentDoctor.hospital.name,
+    );
+    const sentiment = toDisplayText(
+      patchValue("doctorFeedback", extraction.sentiment),
+      "neutral",
+    );
+    const products = toStringList(
+      patchValue("productsDiscussed", extraction.products),
+      extraction.products,
+    );
 
     const matchedDoctor = doctors.find((doctor) =>
       doctor.fullName
@@ -264,26 +327,29 @@ export const LogInteractionPage = () => {
 
     setDisplay((current) => ({
       activeTool: result.selectedTool,
-      confidenceScore: extraction.confidenceScore,
+      confidenceScore: Number.isFinite(extraction.confidenceScore)
+        ? extraction.confidenceScore
+        : 0,
       doctorName: doctorName || current.doctorName,
       hospital: hospital || current.hospital,
       sentiment: sentiment || current.sentiment,
     }));
 
-    if (patch.meetingDate) {
-      setValue("meetingDate", String(patch.meetingDate), {
+    const meetingDate = toDisplayText(patch.meetingDate);
+    if (isIsoDateInput(meetingDate)) {
+      setValue("meetingDate", meetingDate, {
         shouldDirty: true,
         shouldValidate: true,
       });
     }
     if (patch.purpose) {
-      setValue("purpose", String(patch.purpose), {
+      setValue("purpose", toDisplayText(patch.purpose), {
         shouldDirty: true,
         shouldValidate: true,
       });
     }
     if (patch.discussion) {
-      setValue("discussion", String(patch.discussion), {
+      setValue("discussion", toDisplayText(patch.discussion), {
         shouldDirty: true,
         shouldValidate: true,
       });
@@ -295,37 +361,40 @@ export const LogInteractionPage = () => {
       });
     }
     if (patch.samplesProvided) {
-      setValue("samplesProvided", String(patch.samplesProvided), {
+      setValue("samplesProvided", toDisplayText(patch.samplesProvided), {
         shouldDirty: true,
         shouldValidate: true,
       });
     }
     if (patch.doctorFeedback) {
-      setValue("doctorFeedback", String(patch.doctorFeedback), {
+      setValue("doctorFeedback", toDisplayText(patch.doctorFeedback), {
         shouldDirty: true,
         shouldValidate: true,
       });
     }
-    if (patch.interestLevel) {
-      setValue("interestLevel", patch.interestLevel as InterestLevel, {
+    const interestLevel = toInterestLevel(patch.interestLevel);
+    if (interestLevel) {
+      setValue("interestLevel", interestLevel, {
         shouldDirty: true,
         shouldValidate: true,
       });
     }
-    if (patch.nextFollowUp) {
-      setValue("nextFollowUp", String(patch.nextFollowUp), {
+    const nextFollowUp = toDisplayText(patch.nextFollowUp);
+    if (isIsoDateInput(nextFollowUp)) {
+      setValue("nextFollowUp", nextFollowUp, {
         shouldDirty: true,
         shouldValidate: true,
       });
     }
     if (patch.additionalNotes) {
-      setValue("additionalNotes", String(patch.additionalNotes), {
+      setValue("additionalNotes", toDisplayText(patch.additionalNotes), {
         shouldDirty: true,
         shouldValidate: true,
       });
     }
-    if (patch.visitStatus) {
-      setValue("visitStatus", patch.visitStatus as VisitStatus, {
+    const safeVisitStatus = toVisitStatus(patch.visitStatus);
+    if (safeVisitStatus) {
+      setValue("visitStatus", safeVisitStatus, {
         shouldDirty: true,
         shouldValidate: true,
       });
